@@ -1,26 +1,11 @@
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    net::{TcpListener, TcpSocket, TcpStream},
-    sync::broadcast::{self, error::RecvError},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
 };
 
 #[tokio::main]
 async fn main() {
-
-    // let listener = TcpListener::bind("127.0.0.1:8888").unwrap();
-    let listener = {
-        let addr = "127.0.0.1:1080";
-        let backlog = 1024;
-
-        let socket = TcpSocket::new_v4().unwrap();
-        socket.bind(addr.parse().unwrap()).unwrap();
-        socket.set_reuseaddr(true).unwrap();
-        socket.set_reuseport(true).unwrap();
-        socket.set_nodelay(true).unwrap();
-        let listener = socket.listen(backlog).unwrap();
-
-        listener
-    };
+    let listener = TcpListener::bind("127.0.0.1:1080").await.unwrap();
 
     loop {
         let (mut stream, addr) = listener.accept().await.unwrap();
@@ -33,15 +18,15 @@ async fn main() {
 
             let mut reader = BufReader::new(reader);
 
-            let mut line = String::new();
+            let mut line = String::with_capacity(64);
 
             // "CONNECT hangj.cnblogs.com:443 HTTP/1.1\r\n"
             // "GET http://hangj.cnblogs.com/ HTTP/1.1\r\n"
             reader.read_line(&mut line).await.unwrap();
-            println!("line: {line:?}");
+            // println!("line: {line:?}");
 
             let vec = line.split(char::is_whitespace).filter(|s|!s.is_empty()).collect::<Vec<_>>();
-            println!("vec: {vec:?}");
+            // println!("vec: {vec:?}");
 
             assert_eq!(vec.len(), 3);
 
@@ -95,6 +80,8 @@ async fn main() {
             println!("host: {host}, port: {port}, path: {path}");
 
             let mut remote_stream = TcpStream::connect((host, port)).await.unwrap();
+            remote_stream.set_nodelay(true).unwrap();
+
             if method.eq_ignore_ascii_case("CONNECT") {
                 writer.write_all(version.as_bytes()).await.unwrap();
                 writer.write_all(b" 200 Connection Established\r\n\r\n").await.unwrap();
