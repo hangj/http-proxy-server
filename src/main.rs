@@ -8,10 +8,8 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:1080").await.unwrap();
 
     loop {
-        let (mut stream, addr) = listener.accept().await.unwrap();
+        let (mut stream, _addr) = listener.accept().await.unwrap();
         stream.set_nodelay(true).unwrap();
-
-        println!("new client: {}", addr);
 
         tokio::spawn(async move {
             let (reader, mut writer) = stream.split();
@@ -23,11 +21,7 @@ async fn main() {
             // "CONNECT hangj.cnblogs.com:443 HTTP/1.1\r\n"
             // "GET http://hangj.cnblogs.com/ HTTP/1.1\r\n"
             reader.read_line(&mut line).await.unwrap();
-            // println!("line: {line:?}");
-
             let vec = line.split(char::is_whitespace).filter(|s|!s.is_empty()).collect::<Vec<_>>();
-            // println!("vec: {vec:?}");
-
             assert_eq!(vec.len(), 3);
 
             let method = vec[0];
@@ -37,13 +31,13 @@ async fn main() {
             // find host, port and path
             let (host, port, path) = {
                 let mut port = None;
-                let h_uri = if uri.starts_with("http://") {
+                let h_uri = if let Some(uri) = uri.strip_prefix("http://") {
                     port = Some(80);
-                    &uri[7..]
-                } else if uri.starts_with("https://") {
+                    uri
+                } else if let Some(uri) = uri.strip_prefix("https://") {
                     port = Some(443);
-                    &uri[8..]
-                } else  {
+                    uri
+                } else {
                     uri
                 };
 
