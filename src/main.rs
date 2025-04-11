@@ -34,47 +34,36 @@ async fn main() {
             let uri = vec[1];
             let version = vec[2];
 
-
             // find host, port and path
-            let (host, port, path) = if uri.starts_with("http://") {
-                let uri = &uri[7..];
-                let idx = uri.find('/').unwrap_or(uri.len());
-                let mut host = &uri[..idx];
-                let path = &uri[idx..];
-                let port = if let Some(idx) = host.find(':') {
-                    let h = host;
-                    host = &h[..idx];
-                    h[idx + 1..].parse::<u16>().unwrap()
+            let (host, port, path) = {
+                let mut port = None;
+                let h_uri = if uri.starts_with("http://") {
+                    port = Some(80);
+                    &uri[7..]
+                } else if uri.starts_with("https://") {
+                    port = Some(443);
+                    &uri[8..]
+                } else  {
+                    uri
+                };
+
+                let idx = h_uri.find('/').unwrap_or(h_uri.len());
+                let host_port = &h_uri[..idx];
+                let path = &h_uri[idx..];
+
+                let host = if let Some(idx) = host_port.find(':') {
+                    port = Some(host_port[idx + 1..].parse::<u16>().unwrap());
+
+                    &host_port[..idx]
                 } else {
-                    80
+                    host_port
+                };
+
+                let Some(port) = port else {
+                    eprintln!("Invalid uri: {uri}");
+                    return;
                 };
                 (host, port, path)
-            } else if uri.starts_with("https://") {
-                let uri = &uri[8..];
-                let idx = uri.find('/').unwrap_or(uri.len());
-                let mut host = &uri[..idx];
-                let path = &uri[idx..];
-                let port = if let Some(idx) = host.find(':') {
-                    let h = host;
-                    host = &h[..idx];
-                    h[idx + 1..].parse::<u16>().unwrap()
-                } else {
-                    443
-                };
-                (host, port, path)
-            } else {
-                match uri.find(':') {
-                    Some(idx) => {
-                        let host = &uri[..idx];
-                        let port = uri[idx + 1..].parse::<u16>().unwrap();
-                        let path = "";
-                        (host, port, path)
-                    }
-                    None => {
-                        eprintln!("invalid uri");
-                        return;
-                    }
-                }
             };
 
             println!("host: {host}, port: {port}, path: {path}");
