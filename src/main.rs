@@ -16,17 +16,16 @@ async fn main() {
 
             let mut reader = BufReader::new(reader);
 
-            let mut line = String::with_capacity(64);
+            let mut line = String::with_capacity(128);
 
             // "CONNECT hangj.cnblogs.com:443 HTTP/1.1\r\n"
             // "GET http://hangj.cnblogs.com/ HTTP/1.1\r\n"
             reader.read_line(&mut line).await.unwrap();
-            let vec = line.split(char::is_whitespace).filter(|s|!s.is_empty()).collect::<Vec<_>>();
-            assert_eq!(vec.len(), 3);
+            let mut it = line.trim().split(char::is_whitespace).filter(|s|!s.is_empty());
 
-            let method = vec[0];
-            let uri = vec[1];
-            let version = vec[2];
+            let method = it.next().unwrap();
+            let uri = it.next().unwrap();
+            let version = it.next().unwrap();
 
             // find host, port and path
             let (host, port, path) = {
@@ -66,6 +65,16 @@ async fn main() {
             remote_stream.set_nodelay(true).unwrap();
 
             if method.eq_ignore_ascii_case("CONNECT") {
+                if !reader.buffer().ends_with(b"\r\n\r\n") {
+                    let mut vec = Vec::new();
+                    loop {
+                        vec.clear();
+                        stream_reader.read_until(b'\n', &mut vec).await.unwrap();
+                        if vec == b"\r\n" {
+                            break;
+                        }
+                    }
+                }
                 writer.write_all(version.as_bytes()).await.unwrap();
                 writer.write_all(b" 200 Connection Established\r\n\r\n").await.unwrap();
             } else {
