@@ -65,20 +65,40 @@ async fn main() {
             remote_stream.set_nodelay(true).unwrap();
 
             if method.eq_ignore_ascii_case("CONNECT") {
-                if !reader.buffer().ends_with(b"\r\n\r\n") {
-                    let mut vec = Vec::new();
-                    loop {
-                        vec.clear();
-                        stream_reader.read_until(b'\n', &mut vec).await.unwrap();
-                        if vec == b"\r\n" {
-                            break;
-                        }
+                let mut header = String::with_capacity(128);
+                loop {
+                    header.clear();
+                    reader.read_line(&mut header).await.unwrap();
+
+                    // "Proxy-Authorization: Basic Ym9iOmFsaWNl\r\n"
+                    println!("{header:?}");
+
+                    if header == "\r\n" {
+                        break;
                     }
                 }
                 writer.write_all(version.as_bytes()).await.unwrap();
                 writer.write_all(b" 200 Connection Established\r\n\r\n").await.unwrap();
+                remote_stream.write_all(reader.buffer()).await.unwrap();
             } else {
                 remote_stream.write_all(format!("{method} {path} {version}\r\n").as_bytes()).await.unwrap();
+
+                let mut header = String::with_capacity(128);
+                loop {
+                    header.clear();
+                    reader.read_line(&mut header).await.unwrap();
+
+                    // "Proxy-Authorization: Basic Ym9iOmFsaWNl\r\n"
+                    println!("{header:?}");
+                    if !header.to_lowercase().starts_with("proxy-") {
+                        remote_stream.write_all(header.as_bytes()).await.unwrap();
+                    }
+
+                    if header == "\r\n" {
+                        break;
+                    }
+                }
+
                 remote_stream.write_all(reader.buffer()).await.unwrap();
             }
 
