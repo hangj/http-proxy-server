@@ -5,7 +5,13 @@ use tokio::{
 
 #[tokio::main]
 async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:1080").await.unwrap();
+    let mut iter = std::env::args();
+    let exe = iter.next().unwrap();
+    let Some(addr) = iter.next() else {
+        eprintln!("Usage: {exe} <ip:port>");
+        std::process::exit(1);
+    };
+    let listener = TcpListener::bind(addr).await.unwrap();
 
     loop {
         let (mut stream, _addr) = listener.accept().await.unwrap();
