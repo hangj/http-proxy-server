@@ -1,21 +1,21 @@
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 
 #[tokio::main]
-async fn main() {
+async fn main() -> io::Result<()> {
     let mut iter = std::env::args();
     let exe = iter.next().unwrap();
     let Some(addr) = iter.next() else {
-        eprintln!("Usage: {exe} <ip:port>");
+        eprintln!("Usage: {exe} <ip:port>\r\nExample: {exe} 127.0.0.1:1081");
         std::process::exit(1);
     };
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let listener = TcpListener::bind(addr).await?;
 
     loop {
-        let (mut stream, _addr) = listener.accept().await.unwrap();
-        stream.set_nodelay(true).unwrap();
+        let (mut stream, _addr) = listener.accept().await?;
+        stream.set_nodelay(true)?;
 
         tokio::spawn(async move {
             let (reader, mut writer) = stream.split();
@@ -26,7 +26,7 @@ async fn main() {
 
             // "CONNECT hangj.cnblogs.com:443 HTTP/1.1\r\n"
             // "GET http://hangj.cnblogs.com/ HTTP/1.1\r\n"
-            reader.read_line(&mut line).await.unwrap();
+            reader.read_line(&mut line).await?;
             let mut it = line.trim().split(char::is_whitespace).filter(|s|!s.is_empty());
 
             let method = it.next().unwrap();
@@ -59,22 +59,25 @@ async fn main() {
                 };
 
                 let Some(port) = port else {
-                    eprintln!("Invalid uri: {uri}");
-                    return;
+                    // eprintln!("Invalid uri: {uri}");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Invalid uri: {uri}"),
+                    ));
                 };
                 (host, port, path)
             };
 
-            println!("host: {host}, port: {port}, path: {path}");
+            println!("method: {method:?}, host: {host:?}, port: {port}, path: {path:?}");
 
-            let mut remote_stream = TcpStream::connect((host, port)).await.unwrap();
-            remote_stream.set_nodelay(true).unwrap();
+            let mut remote_stream = TcpStream::connect((host, port)).await?;
+            let _ = remote_stream.set_nodelay(true);
 
             if method.eq_ignore_ascii_case("CONNECT") {
                 let mut header = String::with_capacity(128);
                 loop {
                     header.clear();
-                    reader.read_line(&mut header).await.unwrap();
+                    reader.read_line(&mut header).await?;
 
                     // "Proxy-Authorization: Basic Ym9iOmFsaWNl\r\n"
                     println!("{header:?}");
@@ -83,21 +86,21 @@ async fn main() {
                         break;
                     }
                 }
-                writer.write_all(version.as_bytes()).await.unwrap();
-                writer.write_all(b" 200 Connection Established\r\n\r\n").await.unwrap();
-                remote_stream.write_all(reader.buffer()).await.unwrap();
+                writer.write_all(version.as_bytes()).await?;
+                writer.write_all(b" 200 Connection Established\r\n\r\n").await?;
+                remote_stream.write_all(reader.buffer()).await?;
             } else {
-                remote_stream.write_all(format!("{method} {path} {version}\r\n").as_bytes()).await.unwrap();
+                remote_stream.write_all(format!("{method} {path} {version}\r\n").as_bytes()).await?;
 
                 let mut header = String::with_capacity(128);
                 loop {
                     header.clear();
-                    reader.read_line(&mut header).await.unwrap();
+                    reader.read_line(&mut header).await?;
 
                     // "Proxy-Authorization: Basic Ym9iOmFsaWNl\r\n"
                     println!("{header:?}");
                     if !header.to_lowercase().starts_with("proxy-") {
-                        remote_stream.write_all(header.as_bytes()).await.unwrap();
+                        remote_stream.write_all(header.as_bytes()).await?;
                     }
 
                     if header == "\r\n" {
@@ -105,10 +108,12 @@ async fn main() {
                     }
                 }
 
-                remote_stream.write_all(reader.buffer()).await.unwrap();
+                remote_stream.write_all(reader.buffer()).await?;
             }
 
-            tokio::io::copy_bidirectional(&mut stream, &mut remote_stream).await.unwrap();
+            let _ = tokio::io::copy_bidirectional(&mut stream, &mut remote_stream).await?;
+
+            Ok(())
         });
     }
 }
