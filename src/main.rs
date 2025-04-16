@@ -70,7 +70,15 @@ async fn main() -> io::Result<()> {
 
             println!("method: {method:?}, host: {host:?}, port: {port}, path: {path:?}");
 
-            let mut remote_stream = TcpStream::connect((host, port)).await?;
+            let mut remote_stream = match TcpStream::connect((host, port)).await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    eprintln!("Failed to connect to {host}:{port}: {e}");
+                    writer.write_all(version.as_bytes()).await?;
+                    writer.write_all(b" 502 Bad Gateway\r\n\r\n").await?;
+                    return Err(e);
+                }
+            };
             let _ = remote_stream.set_nodelay(true);
 
             if method.eq_ignore_ascii_case("CONNECT") {
